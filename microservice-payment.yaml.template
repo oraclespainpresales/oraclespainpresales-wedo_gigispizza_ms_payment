@@ -1,0 +1,110 @@
+#
+# Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License
+#
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: microservice-payment
+  namespace: madrid
+  labels:
+    app: microservice-payment
+spec:
+  type: ClusterIP
+  selector:
+    app: microservice-payment
+  ports:
+  - port: 9002
+    targetPort: 9002
+    name: http
+--- 
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: microservice-payment
+  namespace: madrid
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: microservice-payment
+  template:
+    metadata:
+      labels:
+        app: microservice-payment
+        version: v1
+    spec:
+      containers:
+      - name: microservice-payment
+        image:  fra.ocir.io/wedoinfra/wedodevops/madrid/mspayment:%CICD_TAG%
+        resources:
+          limits:
+            cpu: "1"
+          requests:
+            cpu: "0.5"
+        env:
+        - name: SQLDB_URL
+          value: "jdbc:oracle:thin:@//cdb-madrid-gigispizza.wedoteam.io:1521/dodbhp_pdb1.sub03010825490.devopsvcn.oraclevcn.com"
+        - name: SQLDB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: cdbsecret
+              key: username 
+        - name: SQLDB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cdbsecret
+              key: password
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 9002
+      imagePullSecrets:
+      - name: ocirsecret
+      restartPolicy: Always
+      nodeSelector: 
+        name: PRO
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: microservice-payment
+  namespace: madrid
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: microservice-payment
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+#  - type: Pods
+#    pods:
+#      metric:
+#        name: packets-per-second
+#      target:
+#        type: AverageValue
+#        averageValue: 1k
+---
